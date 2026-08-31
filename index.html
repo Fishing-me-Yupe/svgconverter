@@ -62,14 +62,15 @@
       background-size: 20px 20px;
       background-position: 0 0, 0 10px, 10px -10px, -10px 0px;
       background-image: linear-gradient(45deg, #21262d 25%, transparent 25%),
-                        linear-gradient("-45deg", #21262d 25%, transparent 25%),
+                        linear-gradient(135deg, #21262d 25%, transparent 25%),
                         linear-gradient(45deg, transparent 75%, #21262d 75%),
-                        linear-gradient("-45deg", transparent 75%, #21262d 75%);
+                        linear-gradient(135deg, transparent 75%, #21262d 75%);
       min-height: 250px;
       display: flex;
       flex-direction: column;
       justify-content: center;
       align-items: center;
+      overflow: hidden;
     }
     .preview-box img, .preview-box svg {
       max-width: 100%;
@@ -80,12 +81,17 @@
       background-color: var(--accent-color);
       color: white;
       border: none;
-      padding: 10px 20px;
+      padding: 12px 20px;
       border-radius: 6px;
       font-weight: bold;
+      font-size: 1rem;
       cursor: pointer;
       margin-top: 15px;
       width: 100%;
+      transition: background-color 0.2s;
+    }
+    button:hover:not(:disabled) {
+      background-color: #2ea043;
     }
     button:disabled {
       background-color: #21262d;
@@ -96,7 +102,7 @@
 </head>
 <body>
 
-  <h1>High-Precision Smooth SVG Converter</h1>
+  <h1>Smooth SVG Converter</h1>
 
   <div class="container">
     <div class="control-group">
@@ -108,7 +114,7 @@
 
     <div class="controls">
       <div class="control-group">
-        <label for="colorNum">色数の制限 (グラデーションの階調): <span id="colorNumVal">16</span></label>
+        <label for="colorNum">色数の制限 (グラデーション階調): <span id="colorNumVal">16</span></label>
         <input type="range" id="colorNum" min="2" max="64" value="16">
       </div>
       <div class="control-group">
@@ -125,11 +131,11 @@
 
     <div class="preview-container">
       <div>
-        <p>元の画像</p>
+        <p style="text-align: center; margin-bottom: 5px;">元画像</p>
         <div class="preview-box" id="originalPreview"></div>
       </div>
       <div>
-        <p>変換後のSVG</p>
+        <p style="text-align: center; margin-bottom: 5px;">変換後のSVG（プレビュー）</p>
         <div class="preview-box" id="svgPreview"></div>
       </div>
     </div>
@@ -149,11 +155,12 @@
     let currentImg = null;
     let svgResultData = null;
 
-    // UIの表示数値を更新
+    // スライダー変更時に数値を更新して即時リポート
     colorNum.addEventListener('input', (e) => { colorNumVal.textContent = e.target.value; processImage(); });
     blurRadius.addEventListener('input', (e) => { blurVal.textContent = e.target.value; processImage(); });
     curveSmooth.addEventListener('input', (e) => { smoothVal.textContent = e.target.value; processImage(); });
 
+    // 画像ファイル読み込み
     imageInput.addEventListener('change', (e) => {
       const file = e.target.files[0];
       if (!file) return;
@@ -163,7 +170,7 @@
         const img = new Image();
         img.onload = () => {
           currentImg = img;
-          document.getElementById('originalPreview').innerHTML = `<img src="${event.target.result}">`;
+          document.getElementById('originalPreview').innerHTML = `<img src="${event.target.result}" alt="Original">`;
           processImage();
         };
         img.src = event.target.result;
@@ -171,53 +178,56 @@
       reader.readAsDataURL(file);
     });
 
+    // 変換およびプレビュー描画処理
     function processImage() {
       if (!currentImg) return;
 
-      // 1. Offscreen Canvasで前処理 (ノイズ除去 & ブラーによる境目の目立ち軽減)
       const canvas = document.createElement('canvas');
       const ctx = canvas.getContext('2d');
       canvas.width = currentImg.width;
       canvas.height = currentImg.height;
 
-      // ぼかし処理を適用して色境目のジャギーや不連続面を滑らかに統合
+      // ぼかし前処理（境目の平滑化）
       const blur = parseFloat(blurRadius.value);
       ctx.filter = blur > 0 ? `blur(${blur}px)` : 'none';
       ctx.drawImage(currentImg, 0, 0);
 
       const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
 
-      // 2. ImageTracerJSのパラメータ設定
       const options = {
-        numberofcolors: parseInt(colorNum.value), // 色数の設定（グラデーション表現に影響）
-        strokewidth: 0,                           // 境界線の隙間を作らないためにストロークを消去
+        numberofcolors: parseInt(colorNum.value),
+        strokewidth: 0,
         linefilter: true,
         scale: 1,
-        roundcoords: 2,                           // 座標精度の向上
-        qscale: 1,
-        // 境界線を隙間なく滑らかに接続するための最適化フラグ
-        blurradius: 0,                            // 前処理側で処理済みのため0
+        roundcoords: 2,
+        blurradius: 0,
         blurdelta: 20,
-        ltres: parseFloat(curveSmooth.value),     // 直線近似のしきい値
-        qtres: parseFloat(curveSmooth.value)      // 曲線近似のしきい値
+        ltres: parseFloat(curveSmooth.value),
+        qtres: parseFloat(curveSmooth.value)
       };
 
-      // 3. SVGへの変換実行
+      // ImageTracerによるSVG生成
       ImageTracer.imagedataToSVG(imageData, (svgString) => {
         svgResultData = svgString;
-        document.getElementById('svgPreview').innerHTML = svgString;
+        
+        // 右側の領域にSVGを描画（プレビュー表示）
+        const svgContainer = document.getElementById('svgPreview');
+        svgContainer.innerHTML = svgString;
+
+        // ボタンの有効化
         downloadBtn.disabled = false;
       }, options);
     }
 
-    // ダウンロード処理
+    // SVGダウンロード機能
     downloadBtn.addEventListener('click', () => {
       if (!svgResultData) return;
-      const blob = new Blob([svgResultData], { type: 'image/svg+xml' });
+
+      const blob = new Blob([svgResultData], { type: 'image/svg+xml;charset=utf-8' });
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = 'vectorized_image.svg';
+      a.download = 'converted_vector.svg';
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
