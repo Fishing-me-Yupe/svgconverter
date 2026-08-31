@@ -3,196 +3,224 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Image to SVG Converter</title>
-  <!-- Tailwind CSS for styling -->
-  <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
-  <!-- Potrace library for image tracing -->
-  <script src="https://cdn.jsdelivr.net/npm/potrace@1.2.0/02-potrace.min.js"></script>
+  <title>Smooth SVG Converter</title>
+  <script src="https://cdn.jsdelivr.net/npm/imagetracerjs@1.2.6/imagetracer_v1.2.6.js"></script>
+  <style>
+    :root {
+      --bg-color: #0d1117;
+      --card-bg: #161b22;
+      --border-color: #30363d;
+      --text-color: #c9d1d9;
+      --accent-color: #238636;
+    }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+      background-color: var(--bg-color);
+      color: var(--text-color);
+      margin: 0;
+      padding: 20px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+    h1 { font-size: 1.5rem; margin-bottom: 20px; }
+    .container {
+      width: 100%;
+      max-width: 900px;
+      background: var(--card-bg);
+      border: 1px solid var(--border-color);
+      border-radius: 6px;
+      padding: 20px;
+      box-sizing: border-box;
+    }
+    .controls {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 15px;
+      margin-bottom: 20px;
+    }
+    .control-group {
+      display: flex;
+      flex-direction: column;
+      gap: 5px;
+    }
+    label { font-size: 0.85rem; font-weight: bold; }
+    input[type="range"], input[type="file"] {
+      width: 100%;
+    }
+    .preview-container {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 20px;
+      margin-top: 20px;
+    }
+    .preview-box {
+      border: 1px solid var(--border-color);
+      border-radius: 6px;
+      padding: 10px;
+      text-align: center;
+      background-size: 20px 20px;
+      background-position: 0 0, 0 10px, 10px -10px, -10px 0px;
+      background-image: linear-gradient(45deg, #21262d 25%, transparent 25%),
+                        linear-gradient("-45deg", #21262d 25%, transparent 25%),
+                        linear-gradient(45deg, transparent 75%, #21262d 75%),
+                        linear-gradient("-45deg", transparent 75%, #21262d 75%);
+      min-height: 250px;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+    }
+    .preview-box img, .preview-box svg {
+      max-width: 100%;
+      max-height: 300px;
+      height: auto;
+    }
+    button {
+      background-color: var(--accent-color);
+      color: white;
+      border: none;
+      padding: 10px 20px;
+      border-radius: 6px;
+      font-weight: bold;
+      cursor: pointer;
+      margin-top: 15px;
+      width: 100%;
+    }
+    button:disabled {
+      background-color: #21262d;
+      color: #484f58;
+      cursor: not-allowed;
+    }
+  </style>
 </head>
-<body class="bg-slate-50 text-slate-800 min-h-screen flex flex-col">
+<body>
 
-  <header class="bg-white border-b border-slate-200 py-6 px-4 sticky top-0 z-10 shadow-sm">
-    <div class="max-w-5xl mx-auto flex justify-between items-center">
+  <h1>High-Precision Smooth SVG Converter</h1>
+
+  <div class="container">
+    <div class="control-group">
+      <label for="imageInput">画像を選択 (PNG, JPG, WebP)</label>
+      <input type="file" id="imageInput" accept="image/*">
+    </div>
+
+    <hr style="border-color: var(--border-color); margin: 20px 0;">
+
+    <div class="controls">
+      <div class="control-group">
+        <label for="colorNum">色数の制限 (グラデーションの階調): <span id="colorNumVal">16</span></label>
+        <input type="range" id="colorNum" min="2" max="64" value="16">
+      </div>
+      <div class="control-group">
+        <label for="blurRadius">境界の平滑化 (ぼかし): <span id="blurVal">1</span>px</label>
+        <input type="range" id="blurRadius" min="0" max="10" value="1" step="0.5">
+      </div>
+      <div class="control-group">
+        <label for="curveSmooth">曲線のスムーズさ: <span id="smoothVal">1</span></label>
+        <input type="range" id="curveSmooth" min="0" max="5" value="1" step="0.5">
+      </div>
+    </div>
+
+    <button id="downloadBtn" disabled>SVGをダウンロード</button>
+
+    <div class="preview-container">
       <div>
-        <h1 class="text-xl font-bold text-slate-900">Image to SVG Converter</h1>
-        <p class="text-xs text-slate-500 mt-1">PNG/JPEGをブラウザ上でSVGに変換（サーバー送信なし）</p>
+        <p>元の画像</p>
+        <div class="preview-box" id="originalPreview"></div>
       </div>
-      <span class="bg-slate-100 text-slate-700 text-xs font-mono px-2.5 py-1 rounded border border-slate-200">Client-Side Only</span>
-    </div>
-  </header>
-
-  <main class="flex-grow max-w-5xl w-full mx-auto p-4 md:p-6 grid grid-cols-1 md:grid-cols-3 gap-6">
-    <!-- コントロール/アップロード パネル -->
-    <div class="space-y-6 md:col-span-1">
-      <!-- アップロードエリア -->
-      <div class="bg-white p-5 rounded-xl border border-slate-200 shadow-xs">
-        <h2 class="text-sm font-semibold text-slate-700 mb-3">1. 画像をアップロード</h2>
-        <label class="flex flex-col items-center justify-center w-full h-32 border-2 border-dashed border-slate-300 rounded-lg cursor-pointer bg-slate-50 hover:bg-slate-100 transition">
-          <div class="flex flex-col items-center justify-center pt-5 pb-6">
-            <svg class="w-8 h-8 mb-3 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"></path></svg>
-            <p class="text-xs text-slate-500"><span class="font-semibold">クリックして選択</span> またはドラッグ</p>
-            <p class="text-[10px] text-slate-400 mt-1">PNG, JPEG, WEBPなど</p>
-          </div>
-          <input id="imageInput" type="file" accept="image/*" class="hidden" />
-        </label>
-      </div>
-
-      <!-- トレース設定 -->
-      <div id="settingsPanel" class="bg-white p-5 rounded-xl border border-slate-200 shadow-xs opacity-50 pointer-events-none transition-opacity">
-        <h2 class="text-sm font-semibold text-slate-700 mb-4">2. トレース設定</h2>
-        
-        <div class="space-y-4">
-          <div>
-            <div class="flex justify-between text-xs mb-1">
-              <label class="font-medium text-slate-600">しきい値 (Threshold)</label>
-              <span id="thresholdVal" class="text-slate-400 font-mono">128</span>
-            </div>
-            <input id="threshold" type="range" min="0" max="255" value="128" class="w-full h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer">
-            <p class="text-[10px] text-slate-400 mt-0.5">数値を下げると明るい部分が消え、上げると全体が黒くなります。</p>
-          </div>
-
-          <div>
-            <div class="flex justify-between text-xs mb-1">
-              <label class="font-medium text-slate-600">ディテール (Turdsize)</label>
-              <span id="turdsizeVal" class="text-slate-400 font-mono">2</span>
-            </div>
-            <input id="turdsize" type="range" min="0" max="100" value="2" class="w-full h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer">
-            <p class="text-[10px] text-slate-400 mt-0.5">指定したピクセル以下の小さなノイズを無視します。</p>
-          </div>
-
-          <div class="pt-2">
-            <button id="downloadBtn" class="w-full bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium py-2.5 px-4 rounded-lg shadow-sm transition flex items-center justify-center gap-2">
-              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v1a3 3 0 00-3-3H7a3 3 0 00-3 3zM12 14a2 2 0 002-2V4a2 2 0 00-4 0v8a2 2 0 002 2z"></path></svg>
-              SVGをダウンロード
-            </button>
-          </div>
-        </div>
+      <div>
+        <p>変換後のSVG</p>
+        <div class="preview-box" id="svgPreview"></div>
       </div>
     </div>
-
-    <!-- プレビューエリア -->
-    <div class="md:col-span-2 grid grid-cols-1 sm:grid-cols-2 gap-4 h-fit">
-      <!-- 元画像 -->
-      <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-xs min-h-[300px] flex flex-col">
-        <h3 class="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">Original Image</h3>
-        <div class="flex-grow flex items-center justify-center border border-slate-100 rounded-lg bg-slate-50 overflow-hidden relative p-2">
-          <img id="srcImage" class="max-w-full max-h-[350px] object-contain hidden" alt="元画像">
-          <span id="srcPlaceholder" class="text-xs text-slate-400">画像が未選択です</span>
-        </div>
-      </div>
-
-      <!-- SVG結果 -->
-      <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-xs min-h-[300px] flex flex-col">
-        <h3 class="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">Generated SVG</h3>
-        <div class="flex-grow flex items-center justify-center border border-slate-100 rounded-lg bg-slate-50 overflow-hidden relative p-2">
-          <!-- チェッカーボードの背景（透過確認用） -->
-          <div class="absolute inset-0 opacity-5 pointer-events-none hidden" id="checkerboard" style="background-image: radial-gradient(#000 20%, transparent 20%), radial-gradient(#000 20%, transparent 20%); background-size: 10px 10px; background-position: 0 0, 5px 5px;"></div>
-          <div id="svgContainer" class="max-w-full max-h-[350px] flex items-center justify-center [&>svg]:max-w-full [&>svg]:max-h-[350px]"></div>
-          <span id="svgPlaceholder" class="text-xs text-slate-400 absolute">ここに変換結果が表示されます</span>
-        </div>
-      </div>
-    </div>
-  </main>
-
-  <footer class="bg-white border-t border-slate-200 py-4 text-center text-xs text-slate-400 mt-auto">
-    <p>Powered by Potrace.js & Tailwind CSS</p>
-  </footer>
+  </div>
 
   <script>
     const imageInput = document.getElementById('imageInput');
-    const srcImage = document.getElementById('srcImage');
-    const srcPlaceholder = document.getElementById('srcPlaceholder');
-    const svgContainer = document.getElementById('svgContainer');
-    const svgPlaceholder = document.getElementById('svgPlaceholder');
-    const checkerboard = document.getElementById('checkerboard');
-    const settingsPanel = document.getElementById('settingsPanel');
+    const colorNum = document.getElementById('colorNum');
+    const blurRadius = document.getElementById('blurRadius');
+    const curveSmooth = document.getElementById('curveSmooth');
     const downloadBtn = document.getElementById('downloadBtn');
+    
+    const colorNumVal = document.getElementById('colorNumVal');
+    const blurVal = document.getElementById('blurVal');
+    const smoothVal = document.getElementById('smoothVal');
 
-    // コントロール
-    const thresholdInput = document.getElementById('threshold');
-    const thresholdVal = document.getElementById('thresholdVal');
-    const turdsizeInput = document.getElementById('turdsize');
-    const turdsizeVal = document.getElementById('turdsizeVal');
+    let currentImg = null;
+    let svgResultData = null;
 
-    let currentSvgString = '';
-    let fileName = 'converted_image';
+    // UIの表示数値を更新
+    colorNum.addEventListener('input', (e) => { colorNumVal.textContent = e.target.value; processImage(); });
+    blurRadius.addEventListener('input', (e) => { blurVal.textContent = e.target.value; processImage(); });
+    curveSmooth.addEventListener('input', (e) => { smoothVal.textContent = e.target.value; processImage(); });
 
-    // 1. 画像の読み込み
     imageInput.addEventListener('change', (e) => {
       const file = e.target.files[0];
       if (!file) return;
 
-      fileName = file.name.substring(0, file.name.lastIndexOf('.')) || file.name;
-
       const reader = new FileReader();
       reader.onload = (event) => {
-        srcImage.src = event.target.result;
-        srcImage.classList.remove('hidden');
-        srcPlaceholder.classList.add('hidden');
-        
-        // 設定パネルを有効化
-        settingsPanel.classList.remove('opacity-50', 'pointer-events-none');
+        const img = new Image();
+        img.onload = () => {
+          currentImg = img;
+          document.getElementById('originalPreview').innerHTML = `<img src="${event.target.result}">`;
+          processImage();
+        };
+        img.src = event.target.result;
       };
       reader.readAsDataURL(file);
     });
 
-    // 元画像がロードされたら初期トレースを実行
-    srcImage.onload = () => {
-      convertToSvg();
-    };
+    function processImage() {
+      if (!currentImg) return;
 
-    // 2. パラメータ変更の監視
-    thresholdInput.addEventListener('input', (e) => {
-      thresholdVal.textContent = e.target.value;
-      convertToSvg();
-    });
+      // 1. Offscreen Canvasで前処理 (ノイズ除去 & ブラーによる境目の目立ち軽減)
+      const canvas = document.createElement('canvas');
+      const ctx = canvas.getContext('2d');
+      canvas.width = currentImg.width;
+      canvas.height = currentImg.height;
 
-    turdsizeInput.addEventListener('input', (e) => {
-      turdsizeVal.textContent = e.target.value;
-      convertToSvg();
-    });
+      // ぼかし処理を適用して色境目のジャギーや不連続面を滑らかに統合
+      const blur = parseFloat(blurRadius.value);
+      ctx.filter = blur > 0 ? `blur(${blur}px)` : 'none';
+      ctx.drawImage(currentImg, 0, 0);
 
-    // 3. SVGへの変換処理 (Potraceのコア処理)
-    function convertToSvg() {
-      if (!srcImage.src) return;
+      const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
 
-      // Potraceに渡すパラメータを設定
-      // Potraceはモノクロ変換（2値化）によるベクター化を行います
-      Potrace.setParameter({
-        threshold: parseInt(thresholdInput.value),
-        turdsize: parseInt(turdsizeInput.value),
-        optcurve: true,
-        alphamax: 1.0
-      });
+      // 2. ImageTracerJSのパラメータ設定
+      const options = {
+        numberofcolors: parseInt(colorNum.value), // 色数の設定（グラデーション表現に影響）
+        strokewidth: 0,                           // 境界線の隙間を作らないためにストロークを消去
+        linefilter: true,
+        scale: 1,
+        roundcoords: 2,                           // 座標精度の向上
+        qscale: 1,
+        // 境界線を隙間なく滑らかに接続するための最適化フラグ
+        blurradius: 0,                            // 前処理側で処理済みのため0
+        blurdelta: 20,
+        ltres: parseFloat(curveSmooth.value),     // 直線近似のしきい値
+        qtres: parseFloat(curveSmooth.value)      // 曲線近似のしきい値
+      };
 
-      // トレース実行
-      Potrace.loadImageFromUrl(srcImage.src, function() {
-        currentSvgString = Potrace.getSVG(1); // スケール1倍で取得
-        
-        // 画面上のコンテナにSVGを注入
-        svgContainer.innerHTML = currentSvgString;
-        
-        // UIの見た目を調整
-        svgPlaceholder.classList.add('hidden');
-        checkerboard.classList.remove('hidden');
-      });
+      // 3. SVGへの変換実行
+      ImageTracer.imagedataToSVG(imageData, (svgString) => {
+        svgResultData = svgString;
+        document.getElementById('svgPreview').innerHTML = svgString;
+        downloadBtn.disabled = false;
+      }, options);
     }
 
-    // 4. ダウンロード処理
+    // ダウンロード処理
     downloadBtn.addEventListener('click', () => {
-      if (!currentSvgString) return;
-
-      const blob = new Blob([currentSvgString], { type: 'image/svg+xml;charset=utf-8' });
+      if (!svgResultData) return;
+      const blob = new Blob([svgResultData], { type: 'image/svg+xml' });
       const url = URL.createObjectURL(blob);
-      
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = `${fileName}.svg`;
-      document.body.appendChild(link);
-      link.click();
-      
-      // クリーンアップ
-      document.body.removeChild(link);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'vectorized_image.svg';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
       URL.revokeObjectURL(url);
     });
   </script>
